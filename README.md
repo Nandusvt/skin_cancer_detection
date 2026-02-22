@@ -16,21 +16,20 @@ A Streamlit web app for skin lesion classification using a trained TensorFlow/Ke
 - `app.py` — Streamlit frontend + inference pipeline
 - `skin_cancer_model.h5` — trained classification model
 
-## Requirements
-
-Install these Python packages:
+## Quick Start (Windows PowerShell)
 
 ```bash
-pip install streamlit tensorflow numpy pillow opencv-python plotly pandas
-```
-
-## Run Locally
-
-```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
 Then open the local URL shown in the terminal (usually `http://localhost:8501`).
+
+## Dependencies
+
+All dependencies are listed in `requirements.txt`.
 
 ## Notes
 
