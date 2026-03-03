@@ -5,6 +5,7 @@ Redesigned Streamlit UI matching the DermVision HTML aesthetic.
 
 import streamlit as st
 import tensorflow as tf
+import streamlit.components.v1 as components
 from tensorflow import keras
 import numpy as np
 from PIL import Image
@@ -19,12 +20,10 @@ import os
 # AUTH GATE — must be FIRST thing in the file
 # ─────────────────────────────────────────────
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
-    st.switch_page("pages/signin.py")
+    st.switch_page("auth/signin.py")
     st.stop()
 
 # ...existing code...
-
-
 
 
 # ─────────────────────────────────────────────
@@ -54,7 +53,8 @@ header[data-testid="stHeader"] { display: none !important; }
 /* ── Fixed Navbar ── */
 .skinai-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; justify-content: space-between; align-items: center;  
+  flex-direction: row;
   padding: 18px 50px;
   background: rgba(10, 20, 45, 0.6);
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
@@ -80,12 +80,13 @@ header[data-testid="stHeader"] { display: none !important; }
   transition: width 0.3s ease; border-radius: 1px;
 }
 .nav-links-area a:hover { color: #e2e8f0; }
-.nav-links-area a:hover::after { width: 100%; }
+
 
 /* ── Hero two-column ── */
 .hero-section {
   display: flex; min-height: calc(100vh - 80px);
   align-items: stretch; gap: 0;
+  margin-top:-100px
 }
 .hero-left {
   flex: 1; display: flex; flex-direction: column; justify-content: center;
@@ -693,20 +694,50 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 # MAIN — NAVBAR + HERO
 # ─────────────────────────────────────────────
+components.html("""
+<script>
+(function () {
+    function attach() {
+        var btn = window.parent.document.getElementById('skinai-hamburger');
+        if (!btn) { setTimeout(attach, 150); return; }
+        btn.addEventListener('click', function () {
+            var close = window.parent.document.querySelector(
+                '[data-testid="stSidebarCollapseButton"] button'
+            );
+            if (close) { close.click(); return; }
+            var open = window.parent.document.querySelector(
+                '[data-testid="collapsedControl"]'
+            );
+            if (open) { open.click(); }
+        });
+    }
+    attach();
+})();
+</script>
+""", height=0)
+
 st.markdown("""
-<!-- Fixed Navbar -->
 <nav class="skinai-nav">
-  <span class="nav-logo-brand"><span class="nav-logo-skin">Skin</span>AI</span>
+    <div>
+        <span><button id="skinai-hamburger" style="
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 24px;
+            cursor: pointer;
+        ">☰</button></span>
+        <span class="nav-logo-brand"><span class="nav-logo-skin">Skin</span>AI</span>
+    </div>
   <div class="nav-links-area">
-    <a href="#">Home</a>
-    <a href="#">About</a>
+    <a href="#home">Home</a>
+    <a href="#upload">Upload</a>
   </div>
 </nav>
 """, unsafe_allow_html=True)
 
 _doc_src = DOC_IMG or "https://placehold.co/600x480/0a142d/38bdf8?text=Doctor+Image"
 st.markdown(f"""
-<div class="hero-section">
+<div id="home" class="hero-section">
   <!-- Left -->
   <div class="hero-left">
     <div class="badge">⚕️ AI-Powered Diagnosis</div>
@@ -741,78 +772,59 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Disclaimer
-st.markdown("""
-<div class="disclaimer">
-    <h4>⚠️ Medical Disclaimer</h4>
-    This tool is for <strong style="color:#e2e8f0">educational and screening purposes only</strong>.
-    It is not a substitute for professional medical diagnosis.
-    Always consult a qualified dermatologist before making clinical decisions.
-</div>
-""", unsafe_allow_html=True)
+
 
 # ─────────────────────────────────────────────
 # LOAD MODEL
 # ─────────────────────────────────────────────
 model, error = load_model()
 
-if error:
-    st.markdown(f"""
-    <div class="glass-card" style="border-left:4px solid #ef4444;">
-        <h4 style="color:#f87171; margin-bottom:8px;">⚠️ Model Not Found</h4>
-        <p style="color:#94a3b8; font-size:0.9rem; line-height:1.7;">
-            Place <code style="color:#38bdf8">skin_cancer_model.h5</code> in the same directory as this script.<br>
-            Error: <code style="color:#f87171">{error}</code>
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
-else:
-    st.success("✅  Model loaded — ready to analyse")
-
-st.markdown('<hr style="border-color:rgba(56,189,248,0.1);margin:28px 0;">', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # UPLOAD + ANALYSIS COLUMNS
 # ─────────────────────────────────────────────
 
-st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-
+st.markdown('<div id="upload" class="glass-card">', unsafe_allow_html=True)
 st.markdown("#### 📤 Upload Lesion Image")
 
-uploaded_file = st.file_uploader(
-    "JPG · JPEG · PNG — Clear, well-lit dermoscopy photos work best",
-    type=['jpg', 'jpeg', 'png'],
-)
+col_left, col_right = st.columns([3, 2], gap="large")
 
-if uploaded_file:
-
-    # Analyse button directly under upload
-    run = st.button("🚀  Analyse Image", use_container_width=True)
-
-    if run:
-        image = Image.open(uploaded_file)
-
-        # Fake loading animation
-        import time
-        prog = st.progress(0, text="Running inference…")
-        for i in range(100):
-            time.sleep(0.01)
-            prog.progress(i + 1)
-        prog.empty()
-
-        results = predict(model, image)
-        st.session_state['results'] = results
-        st.session_state['image'] = image
-
-        st.success("✅  Analysis complete")
-
-# Display image AFTER analysis
-if 'image' in st.session_state:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.image(
-        st.session_state['image'],
-        use_container_width=True
+with col_left:
+    uploaded_file = st.file_uploader(
+        "JPG · JPEG · PNG — Clear, well-lit dermoscopy photos work best",
+        type=['jpg', 'jpeg', 'png'],
     )
+
+    if uploaded_file:
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            run = st.button("Analyse", use_container_width=True)
+
+        if run:
+            image = Image.open(uploaded_file)
+            import time
+            prog = st.progress(0, text="Running inference…")
+            for i in range(100):
+                time.sleep(0.01)
+                prog.progress(i + 1)
+            prog.empty()
+            results = predict(model, image)
+            st.session_state['results'] = results
+            st.session_state['image'] = image
+        
+
+with col_right:
+    if 'image' in st.session_state:
+        st.markdown("""
+        <div style="
+            border-radius: 16px; overflow: hidden;
+            border: 1px solid rgba(56,189,248,0.18);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            background: rgba(10,20,45,0.5);
+            max-width: 320px; margin: 0 auto;
+        ">""", unsafe_allow_html=True)
+        st.image(st.session_state['image'], use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
