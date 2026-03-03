@@ -611,13 +611,13 @@ CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
 @st.cache_resource
 def load_model():
     try:
-        model = keras.models.load_model('skin_cancer_model.h5')
+        model = keras.models.load_model('most_efficinetafterphase3.keras')
         return model, None
     except Exception as e:
         return None, str(e)
 
 
-def preprocess_image(image, target_size=(224, 224)):
+def preprocess_image(image, target_size=(300, 300)):
     if image.mode != 'RGB':
         image = image.convert('RGB')
     image = image.resize(target_size, Image.LANCZOS)
