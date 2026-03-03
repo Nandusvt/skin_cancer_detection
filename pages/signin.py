@@ -1,6 +1,8 @@
 ﻿import streamlit as st
 import pyrebase
 import os
+import requests
+import urllib.parse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,7 +24,69 @@ FIREBASE_CONFIG = {
 firebase = pyrebase.initialize_app(FIREBASE_CONFIG)
 auth = firebase.auth()
 
+# ─────────────────────────────────────────────
+# GOOGLE OAUTH
+# ─────────────────────────────────────────────
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+REDIRECT_URI         = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8501/signin")
+FB_API_KEY           = os.getenv("FIREBASE_API_KEY", "")
+
+def build_google_oauth_url():
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  REDIRECT_URI,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "offline",
+        "prompt":        "select_account",
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+
+def exchange_code_for_firebase_token(code):
+    # Exchange code for Google tokens
+    token_resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code":          code,
+            "client_id":     GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri":  REDIRECT_URI,
+            "grant_type":    "authorization_code",
+        },
+    ).json()
+    if "id_token" not in token_resp:
+        raise Exception(token_resp.get("error_description", str(token_resp)))
+    # Sign in to Firebase with the Google id_token
+    fb_resp = requests.post(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={FB_API_KEY}",
+        json={
+            "requestUri":          REDIRECT_URI,
+            "postBody":            f"id_token={token_resp['id_token']}&providerId=google.com",
+            "returnSecureToken":   True,
+            "returnIdpCredential": True,
+        },
+    ).json()
+    if "error" in fb_resp:
+        raise Exception(fb_resp["error"]["message"])
+    return fb_resp
+
 st.set_page_config(page_title="SkinAI — Login", layout="wide", page_icon="🔬")
+
+# Handle Google OAuth callback
+params = st.query_params
+if "code" in params and not st.session_state.get("authenticated"):
+    with st.spinner("Signing in with Google..."):
+        try:
+            result = exchange_code_for_firebase_token(params["code"])
+            st.session_state["authenticated"] = True
+            st.session_state["user_email"]    = result.get("email", "")
+            st.session_state["user_token"]    = result.get("idToken", "")
+            st.query_params.clear()
+            st.switch_page("app.py")
+        except Exception as e:
+            st.error(f"Google sign-in failed: {e}")
+            st.query_params.clear()
 
 if st.session_state.get("authenticated"):
     st.switch_page("app.py")
@@ -122,6 +186,8 @@ if "auth_mode" not in st.session_state:
 
 _, card_col, _ = st.columns([1, 1.05, 1])
 
+google_url = build_google_oauth_url()
+
 with card_col:
     mode = st.session_state["auth_mode"]
 
@@ -193,16 +259,16 @@ with card_col:
             st.rerun()
 
         st.markdown(
-            '<div style="display:flex;align-items:center;gap:12px;margin:18px 0 16px;">'
+            f'<div style="display:flex;align-items:center;gap:12px;margin:18px 0 16px;">'
             '<div style="flex:1;height:1px;background:rgba(255,255,255,0.09);"></div>'
             '<span style="color:rgba(255,255,255,0.3);font-size:12px;white-space:nowrap;">Or continue with</span>'
             '<div style="flex:1;height:1px;background:rgba(255,255,255,0.09);"></div>'
             '</div>'
             '<div style="display:flex;justify-content:center;">'
-            '<div style="width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">'
+            f'<a href="{google_url}" target="_self" style="text-decoration:none;">'
+            '<div style="width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;">'
             '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-3.58-13.47-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>'
-            '</div>'
-            '</div>',
+            '</div></a></div>',
             unsafe_allow_html=True
         )
 
@@ -239,3 +305,17 @@ with card_col:
                             st.error("Sign up failed. Please try again.")
             else:
                 st.warning("Please fill in all fields.")
+
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:12px;margin:18px 0 16px;">'
+            '<div style="flex:1;height:1px;background:rgba(255,255,255,0.09);"></div>'
+            '<span style="color:rgba(255,255,255,0.3);font-size:12px;white-space:nowrap;">Or continue with</span>'
+            '<div style="flex:1;height:1px;background:rgba(255,255,255,0.09);"></div>'
+            '</div>'
+            '<div style="display:flex;justify-content:center;">'
+            f'<a href="{google_url}" target="_self" style="text-decoration:none;">'
+            '<div style="width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;">'
+            '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-3.58-13.47-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>'
+            '</div></a></div>',
+            unsafe_allow_html=True
+        )
