@@ -19,9 +19,9 @@ import os
 # ─────────────────────────────────────────────
 # AUTH GATE — must be FIRST thing in the file
 # ─────────────────────────────────────────────
-if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
-    st.switch_page("pages/signin.py")
-    st.stop()
+# if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+#     st.switch_page("pages/signin.py")
+#     st.stop()
 
 # ...existing code...
 
@@ -50,6 +50,9 @@ st.markdown("""
 header[data-testid="stHeader"] { display: none !important; }
 .main .block-container { padding-top: 90px !important; }
 
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
 /* ── Fixed Navbar ── */
 .skinai-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
@@ -350,17 +353,70 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
 }
 .rec-bar strong { color: var(--text); }
 
-/* ── Upload zone override ── */
+
+/* ───────────── Upload Dropzone (Premium Style) ───────────── */
+/* ===== FILE UPLOADER COMPLETE OVERRIDE ===== */
+
+/* ================= FILE UPLOADER OVERRIDE ================= */
+
+/* Add spacing */
 [data-testid="stFileUploader"] {
-  background: rgba(10,20,45,0.5) !important;
-  border: 1.5px dashed rgba(56,189,248,0.3) !important;
-  border-radius: 16px !important;
-  padding: 8px !important;
-}
-[data-testid="stFileUploader"]:hover {
-  border-color: rgba(56,189,248,0.6) !important;
+    margin-top: 10px !important;
 }
 
+/* Real drop zone (target deeper wrapper safely) */
+[data-testid="stFileUploader"] section {
+    background: rgba(10, 20, 45, 0.55) !important;
+    border: 2px dashed rgba(56, 189, 248, 0.45) !important;
+    border-radius: 22px !important;
+    padding: 36px !important;
+    backdrop-filter: blur(14px) !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Hover glow */
+[data-testid="stFileUploader"] section:hover {
+    border-color: rgba(56,189,248,0.75) !important;
+    box-shadow: 0 0 35px rgba(56,189,248,0.2) !important;
+}
+
+/* Remove inner white blocks */
+[data-testid="stFileUploader"] section > div {
+    background: transparent !important;
+}
+
+/* ===== Force ALL uploader text white ===== */
+[data-testid="stFileUploader"] * {
+    color: #ffffff !important;
+}
+
+/* Drag text styling */
+[data-testid="stFileUploader"] label {
+    font-size: 10px !important;
+    
+}
+
+/* Helper text */
+[data-testid="stFileUploader"] small {
+    font-size: 5px !important;
+    opacity: 0.9 !important;
+}
+
+/* Browse button */
+[data-testid="stFileUploader"] button {
+    background: rgba(15,23,42,0.9) !important;
+    border: 1px solid rgba(56,189,248,0.4) !important;
+    color: #ffffff !important;
+    border-radius: 14px !important;
+    padding: 10px 22px !important;
+    
+    transition: all 0.25s ease !important;
+}
+
+[data-testid="stFileUploader"] button:hover {
+    background: rgba(30,41,59,1) !important;
+    border-color: rgba(56,189,248,0.75) !important;
+}
 /* ── Streamlit element resets ── */
 h1,h2,h3,h4,h5 { font-family: 'Inter', sans-serif !important; color: var(--text) !important; }
 p, li, label, div { color: inherit; }
@@ -790,10 +846,32 @@ st.markdown("#### 📤 Upload Lesion Image")
 col_left, col_right = st.columns([3, 2], gap="large")
 
 with col_left:
+    st.markdown("""
+    <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+        <span style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);
+                    padding:6px 14px; border-radius:50px; font-size:12px; color:#ffffff;">
+            Supported: JPG, JPEG, PNG
+        </span>
+        <span style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);
+                    padding:6px 14px; border-radius:50px; font-size:12px; color:#ffffff;">
+            Max file size: 200 MB
+        </span>
+        <span style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);
+                    padding:6px 14px; border-radius:50px; font-size:12px; color:#ffffff;">
+            Single image upload
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+  
     uploaded_file = st.file_uploader(
-        "JPG · JPEG · PNG — Clear, well-lit dermoscopy photos work best",
+        "",
         type=['jpg', 'jpeg', 'png'],
     )
+
+    # Badges (moved below uploader text)
+    
+
+   
 
     if uploaded_file:
         _, btn_col, _ = st.columns([1, 2, 1])
@@ -811,7 +889,7 @@ with col_left:
             results = predict(model, image)
             st.session_state['results'] = results
             st.session_state['image'] = image
-        
+
 
 with col_right:
     if 'image' in st.session_state:
@@ -822,8 +900,11 @@ with col_right:
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
             background: rgba(10,20,45,0.5);
             max-width: 320px; margin: 0 auto;
-        ">""", unsafe_allow_html=True)
+        ">
+        """, unsafe_allow_html=True)
+
         st.image(st.session_state['image'], use_container_width=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
