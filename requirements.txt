@@ -5,3 +5,5 @@ Pillow
 opencv-python-headless
 plotly
 pandas
+pyrebase4
+python-dotenv

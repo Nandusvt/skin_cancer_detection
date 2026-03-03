@@ -16,6 +16,18 @@ import os
 
 
 # ─────────────────────────────────────────────
+# AUTH GATE — must be FIRST thing in the file
+# ─────────────────────────────────────────────
+if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    st.switch_page("pages/signin.py")
+    st.stop()
+
+# ...existing code...
+
+
+
+
+# ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
