@@ -1,16 +1,6 @@
 """
-Skin Cancer Detection & Classification Web App
-Beautiful Frontend with Streamlit
-
-Features:
-- Upload skin lesion images
-- Real-time prediction with probabilities
-- Beautiful visualizations
-- Detailed disease information
-- Medical disclaimer
-- Downloadable results
-
-Author: Skin Cancer Detection System
+SkinAI — Skin Cancer Detection & Classification
+Redesigned Streamlit UI matching the DermVision HTML aesthetic.
 """
 
 import streamlit as st
@@ -18,655 +8,909 @@ import tensorflow as tf
 from tensorflow import keras
 import numpy as np
 from PIL import Image
-import cv2
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 from datetime import datetime
+import base64
+import os
 
-# ============================================
-# PAGE CONFIGURATION
-# ============================================
 
+# ─────────────────────────────────────────────
+# PAGE CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Skin Cancer Detection AI",
+    page_title="SkinAI — Dermoscopy Analysis",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# ============================================
-# CUSTOM CSS STYLING
-# ============================================
-
+# ─────────────────────────────────────────────
+# GLOBAL CSS  (mirrors your HTML exactly)
+# ─────────────────────────────────────────────
 st.markdown("""
-    <style>
-    /* Main container */
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Headers */
-    .main-header {
-        font-size: 3.5rem;
-        font-weight: 800;
-        color: #1e3a8a;
-        text-align: center;
-        margin-bottom: 1rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sub-header {
-        font-size: 1.3rem;
-        color: #475569;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    
-    /* Warning box */
-    .warning-box {
-        background: #1e293b;
-        border-left: 5px solid #38bdf8;
-        color: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin: 1.5rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    /* Result box */
-    .result-box {
-        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        border-left: 5px solid #38bdf8;
-        color: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin: 1.5rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    /* Info cards */
-    .info-card {
-        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        border-left: 5px solid #38bdf8;
-        color: white;
-        padding: 1.5rem;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        margin: 1rem 0;
-        border-top: 4px solid #667eea;
-    }
-    
-    /* Buttons */
-    .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 0.75rem 2rem;
-        font-size: 1.1rem;
-        font-weight: 600;
-        border-radius: 50px;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        transition: all 0.3s ease;
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-    }
-    
-    /* File uploader */
-    .uploadedFile {
-        border: 2px dashed #667eea;
-        border-radius: 10px;
-        padding: 2rem;
-    }
-    
-    /* Progress bar */
-    .stProgress > div > div {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    }
-    </style>
+<style>
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ── Hide Streamlit chrome ── */
+#MainMenu { visibility: hidden !important; }
+[data-testid="stToolbar"] { display: none !important; }
+header[data-testid="stHeader"] { display: none !important; }
+.main .block-container { padding-top: 90px !important; }
+
+/* ── Fixed Navbar ── */
+.skinai-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 50px;
+  background: rgba(10, 20, 45, 0.6);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.12);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+}
+.nav-logo-brand { font-size: 26px; font-weight: 800; color: #e2e8f0; letter-spacing: 1px; }
+.nav-logo-skin {
+  font-weight: 900; font-size: 28px;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.nav-links-area { display: flex; gap: 0; }
+.nav-links-area a {
+  text-decoration: none; color: #94a3b8;
+  font-weight: 600; font-size: 15px; margin-left: 32px;
+  transition: color 0.3s; position: relative;
+}
+.nav-links-area a::after {
+  content: ''; position: absolute; left: 0; bottom: -3px;
+  width: 0; height: 2px;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  transition: width 0.3s ease; border-radius: 1px;
+}
+.nav-links-area a:hover { color: #e2e8f0; }
+.nav-links-area a:hover::after { width: 100%; }
+
+/* ── Hero two-column ── */
+.hero-section {
+  display: flex; min-height: calc(100vh - 80px);
+  align-items: stretch; gap: 0;
+}
+.hero-left {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  padding: 60px 50px 60px 10px;
+}
+.hero-right {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 60px 0 60px 30px;
+}
+.image-frame {
+  position: relative; width: 100%; min-height: 480px;
+  border-radius: 32px; overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 60px rgba(14,165,233,0.08), 0 32px 80px rgba(0,0,0,0.5);
+}
+.image-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-glow {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(14,165,233,0.12) 0%, transparent 50%, rgba(99,102,241,0.08) 100%);
+  pointer-events: none;
+}
+
+/* ── Hero text ── */
+.hero-h1-new {
+  font-family: 'Inter', sans-serif !important;
+  font-size: clamp(2.4rem, 4vw, 3.8rem);
+  font-weight: 900; line-height: 1.1;
+  color: #f1f5f9; letter-spacing: -1px;
+  margin-bottom: 24px;
+}
+.gradient-text {
+  background: linear-gradient(90deg, #38bdf8 0%, #818cf8 60%, #c084fc 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hero-p { font-size: 17px; line-height: 1.8; color: #64748b; max-width: 500px; margin-bottom: 36px; }
+
+/* ── CTA buttons ── */
+.cta-row { display: flex; gap: 16px; margin-bottom: 48px; flex-wrap: wrap; }
+.btn-primary-cta {
+  text-decoration: none;
+  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+  color: #ffffff; font-weight: 700; font-size: 15px;
+  padding: 14px 32px; border-radius: 50px;
+  box-shadow: 0 4px 24px rgba(14,165,233,0.35);
+  transition: transform 0.2s, box-shadow 0.2s; letter-spacing: 0.3px; display: inline-block;
+}
+.btn-primary-cta:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(14,165,233,0.5); }
+.btn-ghost-cta {
+  text-decoration: none; background: rgba(56,189,248,0.08); color: #94a3b8;
+  font-weight: 600; font-size: 15px; padding: 14px 32px;
+  border-radius: 50px; border: 1px solid rgba(56,189,248,0.2);
+  transition: background 0.2s, color 0.2s, border-color 0.2s; display: inline-block;
+}
+.btn-ghost-cta:hover { background: rgba(56,189,248,0.15); color: #e2e8f0; border-color: rgba(56,189,248,0.4); }
+
+/* ── Root palette ── */
+:root {
+  --bg:        #07101f;
+  --bg-card:   rgba(10, 20, 45, 0.72);
+  --cyan:      #38bdf8;
+  --indigo:    #818cf8;
+  --violet:    #c084fc;
+  --border:    rgba(56, 189, 248, 0.15);
+  --text:      #e2e8f0;
+  --muted:     #64748b;
+  --danger:    #ef4444;
+  --warning:   #f59e0b;
+  --success:   #10b981;
+}
+
+/* ── Full-page background ── */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+  background: var(--bg) !important;
+  background-image:
+    radial-gradient(ellipse at 12% 28%, rgba(0,180,255,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 72%, rgba(130,60,255,0.07) 0%, transparent 55%) !important;
+  font-family: 'Inter', sans-serif !important;
+  color: var(--text) !important;
+}
+
+[data-testid="stSidebar"] {
+  background: rgba(8, 16, 36, 0.95) !important;
+  border-right: 1px solid var(--border) !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #07101f; }
+::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.3); border-radius: 3px; }
+
+/* ── Animated orbs (CSS only, injected via HTML) ── */
+.orb {
+  position: fixed; border-radius: 50%;
+  filter: blur(90px); pointer-events: none; z-index: 0;
+  animation: floatOrb 9s ease-in-out infinite;
+}
+.orb-1 { width:520px; height:520px; background:rgba(14,165,233,0.055); top:-120px; left:-120px; }
+.orb-2 { width:420px; height:420px; background:rgba(99,102,241,0.055); bottom:-80px; right:-80px; animation-delay:-4.5s; }
+.orb-3 { width:280px; height:280px; background:rgba(16,185,129,0.04);  top:45%;   left:48%;  animation-delay:-2.2s; }
+@keyframes floatOrb {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(22px); }
+}
+
+/* ── Logo / navbar strip ── */
+.nav-strip {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 0 28px 0; margin-bottom: 4px;
+}
+.logo-mark {
+  font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 900;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+.logo-sub {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 2px; padding-top: 6px;
+}
+
+/* ── Hero heading ── */
+.hero-h1 {
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(2.4rem, 4vw, 3.8rem);
+  font-weight: 900; line-height: 1.07;
+  color: #f1f5f9; letter-spacing: -1.5px;
+  margin-bottom: 16px;
+}
+.hero-h1 .grad {
+  background: linear-gradient(90deg, #38bdf8 0%, #818cf8 55%, #c084fc 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hero-sub {
+  font-size: 1.05rem; color: var(--muted);
+  line-height: 1.8; max-width: 500px; margin-bottom: 28px;
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  background: rgba(14,165,233,0.12);
+  border: 1px solid rgba(56,189,248,0.3);
+  color: #38bdf8; font-size: 12px; font-weight: 700;
+  padding: 5px 16px; border-radius: 50px;
+  letter-spacing: 0.5px; margin-bottom: 20px; width: fit-content;
+}
+
+/* ── Stat strip ── */
+.stats-row {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 22px 28px;
+  background: rgba(10,20,45,0.5);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  margin-top: 8px; margin-bottom: 36px;
+}
+.stat-item { display: flex; flex-direction: column; gap: 2px; }
+.stat-num {
+  font-family: 'Inter', sans-serif; font-size: 20px; font-weight: 800;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.stat-div { width:1px; height:32px; background: var(--border); }
+
+/* ── Glassmorphic card ── */
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px 32px;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+  margin-bottom: 20px;
+  position: relative; overflow: hidden;
+}
+.glass-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(56,189,248,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ── Disclaimer ── */
+.disclaimer {
+  background: rgba(10,20,45,0.7);
+  border-left: 4px solid var(--cyan);
+  border-radius: 0 14px 14px 0;
+  padding: 18px 24px;
+  margin-bottom: 28px;
+  font-size: 0.92rem; color: #94a3b8;
+  line-height: 1.7;
+  backdrop-filter: blur(10px);
+}
+.disclaimer h4 { color: var(--cyan); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 6px; }
+
+/* ── Result banner ── */
+.result-banner {
+  border-radius: 18px; padding: 24px 30px;
+  background: linear-gradient(135deg, rgba(10,20,45,0.9) 0%, rgba(30,41,59,0.9) 100%);
+  border: 1px solid var(--border);
+  position: relative; overflow: hidden;
+  backdrop-filter: blur(16px);
+  margin-bottom: 24px;
+}
+.result-banner::after {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--indigo), var(--violet));
+}
+.result-class {
+  font-family: 'Inter', sans-serif; font-size: 1.8rem; font-weight: 800;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin: 6px 0;
+}
+.conf-pill {
+  display: inline-block;
+  background: rgba(56,189,248,0.12);
+  border: 1px solid rgba(56,189,248,0.25);
+  color: var(--cyan); font-size: 13px; font-weight: 700;
+  padding: 4px 16px; border-radius: 50px;
+}
+
+/* ── Severity chip ── */
+.sev-critical { background: rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
+.sev-high     { background: rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:#fbbf24; }
+.sev-moderate { background: rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.35);color:#fcd34d; }
+.sev-low      { background: rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35);color:#34d399; }
+.sev-chip {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 3px 14px; border-radius: 50px;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+
+/* ── Info section cards ── */
+.info-section {
+  background: rgba(10,20,45,0.55);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px 24px;
+  margin-bottom: 14px;
+  backdrop-filter: blur(10px);
+}
+.info-section h5 {
+  font-family: 'Inter', sans-serif; font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--cyan); margin-bottom: 12px; font-weight: 700;
+}
+.info-section p, .info-section li { font-size: 0.93rem; color: #94a3b8; line-height: 1.7; }
+.info-section ul { padding-left: 18px; }
+.info-section li { margin-bottom: 4px; }
+
+/* ── Recommendation bar ── */
+.rec-bar {
+  border-radius: 14px; padding: 18px 24px;
+  background: rgba(10,20,45,0.7);
+  border-left: 4px solid var(--cyan);
+  font-size: 1.0rem; color: #cbd5e1; line-height: 1.7;
+  margin-top: 8px;
+}
+.rec-bar strong { color: var(--text); }
+
+/* ── Upload zone override ── */
+[data-testid="stFileUploader"] {
+  background: rgba(10,20,45,0.5) !important;
+  border: 1.5px dashed rgba(56,189,248,0.3) !important;
+  border-radius: 16px !important;
+  padding: 8px !important;
+}
+[data-testid="stFileUploader"]:hover {
+  border-color: rgba(56,189,248,0.6) !important;
+}
+
+/* ── Streamlit element resets ── */
+h1,h2,h3,h4,h5 { font-family: 'Inter', sans-serif !important; color: var(--text) !important; }
+p, li, label, div { color: inherit; }
+[data-testid="stMarkdownContainer"] { color: var(--text); }
+
+/* ── Button ── */
+.stButton > button {
+  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%) !important;
+  color: #fff !important; border: none !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important; font-size: 15px !important;
+  padding: 12px 28px !important; border-radius: 50px !important;
+  box-shadow: 0 4px 24px rgba(14,165,233,0.3) !important;
+  transition: all 0.2s !important; letter-spacing: 0.3px !important;
+}
+.stButton > button:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 32px rgba(14,165,233,0.5) !important;
+}
+
+/* ── Success / error / info messages ── */
+.stSuccess { background: rgba(16,185,129,0.1) !important; border: 1px solid rgba(16,185,129,0.3) !important; border-radius: 10px !important; }
+.stError   { background: rgba(239,68,68,0.1) !important;  border: 1px solid rgba(239,68,68,0.3) !important;  border-radius: 10px !important; }
+.stInfo    { background: rgba(56,189,248,0.08) !important; border: 1px solid rgba(56,189,248,0.25) !important; border-radius: 10px !important; }
+
+/* ── Progress bar ── */
+.stProgress > div > div { background: linear-gradient(90deg, #38bdf8, #818cf8) !important; }
+
+/* ── Tab overrides ── */
+[data-testid="stTabs"] button {
+  font-family: 'Inter', sans-serif !important; font-weight: 600 !important;
+  color: var(--muted) !important; border-radius: 8px 8px 0 0 !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+  color: var(--cyan) !important;
+  border-bottom: 2px solid var(--cyan) !important;
+}
+
+/* ── Plotly transparent bg ── */
+.js-plotly-plot .plotly { background: transparent !important; }
+
+/* ── Sidebar text ── */
+[data-testid="stSidebar"] * { color: #94a3b8 !important; }
+[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,[data-testid="stSidebar"] strong {
+  color: var(--text) !important;
+}
+
+/* ── Download button ── */
+.stDownloadButton > button {
+  background: rgba(56,189,248,0.1) !important;
+  border: 1px solid rgba(56,189,248,0.3) !important;
+  color: var(--cyan) !important;
+  font-family: 'Inter', sans-serif !important; font-weight: 700 !important;
+  border-radius: 50px !important;
+}
+.stDownloadButton > button:hover {
+  background: rgba(56,189,248,0.2) !important;
+  border-color: rgba(56,189,248,0.5) !important;
+}
+
+/* ── Divider ── */
+hr { border-color: var(--border) !important; }
+
+/* ── Footer ── */
+.footer {
+  text-align: center; padding: 32px 0 16px;
+  color: var(--muted); font-size: 0.82rem; line-height: 1.8;
+}
+.footer span {
+  font-family: 'Inter', sans-serif; font-weight: 700;
+  background: linear-gradient(90deg,#38bdf8,#818cf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+</style>
+
+<!-- Animated orbs -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
 """, unsafe_allow_html=True)
 
-# ============================================
-# DISEASE INFORMATION DATABASE
-# ============================================
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+def _b64_img(path: str) -> str:
+    """Return a base64 data-URI for a local image, or empty string if missing."""
+    if os.path.exists(path):
+        ext = os.path.splitext(path)[1].lstrip('.').lower()
+        mime = 'jpeg' if ext == 'jpg' else ext
+        with open(path, 'rb') as f:
+            return f"data:image/{mime};base64,{base64.b64encode(f.read()).decode()}"
+    return ''
 
+DOC_IMG = _b64_img('doc.png')
+
+# ─────────────────────────────────────────────
+# DISEASE DATABASE
+# ─────────────────────────────────────────────
 DISEASE_INFO = {
     'akiec': {
         'name': 'Actinic Keratosis',
         'full_name': 'Actinic Keratosis & Intraepithelial Carcinoma',
         'severity': 'Moderate',
-        'color': '#f59e0b',
-        'description': 'A rough, scaly patch on the skin caused by years of sun exposure. Can develop into skin cancer if untreated.',
-        'symptoms': [
-            'Rough, dry, or scaly patch of skin',
-            'Flat to slightly raised patch',
-            'Color variations (pink, red, or brown)',
-            'Itching or burning in the affected area'
-        ],
-        'risk_factors': [
-            'Fair skin',
-            'History of frequent sun exposure',
-            'Age over 40',
-            'Weakened immune system'
-        ],
-        'treatment': 'Cryotherapy, topical medications, photodynamic therapy, or surgical removal.',
-        'recommendation': '⚠️ Consult a dermatologist for proper treatment to prevent progression to cancer.'
+        'sev_class': 'sev-moderate',
+        'accent': '#f59e0b',
+        'description': 'A rough, scaly patch caused by years of UV exposure. Can progress to invasive squamous cell carcinoma if left untreated.',
+        'symptoms': ['Rough, dry, or scaly patch of skin','Flat to slightly raised patch','Colour variations — pink, red, or brown','Itching or burning sensation in the affected area'],
+        'risk_factors': ['Fair or light skin','Chronic sun exposure','Age over 40','Immunosuppressed individuals'],
+        'treatment': 'Cryotherapy, topical fluorouracil / imiquimod, photodynamic therapy, or dermabrasion.',
+        'recommendation': '⚠️ Consult a dermatologist promptly. Untreated lesions have a small but real chance of becoming cancerous.',
     },
-    
     'bcc': {
         'name': 'Basal Cell Carcinoma',
         'full_name': 'Basal Cell Carcinoma',
         'severity': 'High',
-        'color': '#ef4444',
-        'description': 'The most common type of skin cancer. Grows slowly and rarely spreads, but requires treatment.',
-        'symptoms': [
-            'Pearly or waxy bump',
-            'Flat, flesh-colored or brown lesion',
-            'Bleeding or scabbing sore that heals and returns',
-            'Pink growth with raised edges'
-        ],
-        'risk_factors': [
-            'Chronic sun exposure',
-            'Fair skin',
-            'Family history',
-            'Radiation therapy'
-        ],
-        'treatment': 'Surgical excision, Mohs surgery, cryotherapy, or topical treatments.',
-        'recommendation': '🚨 Schedule an appointment with a dermatologist immediately for evaluation and treatment.'
+        'sev_class': 'sev-high',
+        'accent': '#ef4444',
+        'description': 'The most common skin cancer. Grows slowly and rarely metastasises, but causes local tissue destruction if neglected.',
+        'symptoms': ['Pearly or waxy bump','Flat, flesh-coloured lesion','Sore that heals and returns','Pink growth with raised, rolled edges'],
+        'risk_factors': ['Chronic sun / UV exposure','Fair complexion','Family history of BCC','Prior radiation therapy'],
+        'treatment': 'Mohs micrographic surgery, excision, electrodessication, radiation, or topical therapy.',
+        'recommendation': '🚨 Book a dermatologist appointment as soon as possible for biopsy and treatment planning.',
     },
-    
     'bkl': {
         'name': 'Benign Keratosis',
         'full_name': 'Benign Keratosis-like Lesions',
         'severity': 'Low',
-        'color': '#10b981',
-        'description': 'Non-cancerous skin growths including seborrheic keratoses and solar lentigos.',
-        'symptoms': [
-            'Brown, black, or tan growths',
-            'Waxy, slightly raised appearance',
-            'Stuck-on appearance',
-            'Usually painless'
-        ],
-        'risk_factors': [
-            'Age (more common in older adults)',
-            'Genetics',
-            'Sun exposure'
-        ],
-        'treatment': 'Usually no treatment needed. Can be removed for cosmetic reasons.',
-        'recommendation': '✅ Generally harmless, but monitoring for changes is recommended.'
+        'sev_class': 'sev-low',
+        'accent': '#10b981',
+        'description': 'Non-cancerous growths including seborrhoeic keratoses and solar lentigines — a normal part of skin ageing.',
+        'symptoms': ['Brown, black, or tan growths','Waxy "stuck-on" appearance','Slightly raised surface','Usually painless'],
+        'risk_factors': ['Advancing age','Genetic predisposition','Cumulative sun exposure'],
+        'treatment': 'No treatment required. Cryotherapy or laser if removal desired for cosmetic reasons.',
+        'recommendation': '✅ Benign finding. Routine skin checks recommended to catch any future changes early.',
     },
-    
     'df': {
         'name': 'Dermatofibroma',
         'full_name': 'Dermatofibroma',
         'severity': 'Low',
-        'color': '#10b981',
-        'description': 'A common benign skin growth that feels like a hard lump. Usually harmless.',
-        'symptoms': [
-            'Small, firm bump',
-            'Red, brown, or purple color',
-            'Dimples when pinched',
-            'May be itchy or tender'
-        ],
-        'risk_factors': [
-            'Minor skin injuries',
-            'Insect bites',
-            'More common in women'
-        ],
-        'treatment': 'Usually no treatment needed. Surgical removal if bothersome.',
-        'recommendation': '✅ Benign condition. Removal only if causing discomfort or cosmetic concerns.'
+        'sev_class': 'sev-low',
+        'accent': '#10b981',
+        'description': 'A common benign fibrous nodule, typically triggered by minor trauma. Harmless and usually asymptomatic.',
+        'symptoms': ['Small, firm subcutaneous bump','Red, brown, or purple pigmentation','Dimple sign when pinched','Occasionally itchy or tender'],
+        'risk_factors': ['Minor skin injuries or insect bites','More prevalent in women 20–40 years','Unknown in most cases'],
+        'treatment': 'No treatment needed. Excision if symptomatic or cosmetically bothersome.',
+        'recommendation': '✅ Benign — removal only warranted if causing discomfort.',
     },
-    
     'mel': {
         'name': 'Melanoma',
         'full_name': 'Melanoma',
         'severity': 'Critical',
-        'color': '#dc2626',
-        'description': 'The most dangerous type of skin cancer. Can spread to other organs if not treated early.',
-        'symptoms': [
-            'Asymmetrical mole',
-            'Irregular borders',
-            'Color variations (multiple colors)',
-            'Diameter larger than 6mm',
-            'Evolving size, shape, or color'
-        ],
-        'risk_factors': [
-            'Family history of melanoma',
-            'Many moles or atypical moles',
-            'Fair skin',
-            'History of sunburns',
-            'Weakened immune system'
-        ],
-        'treatment': 'Surgical excision, immunotherapy, targeted therapy, radiation, or chemotherapy.',
-        'recommendation': '🚨🚨 URGENT: See a dermatologist immediately. Early detection is critical for successful treatment.'
+        'sev_class': 'sev-critical',
+        'accent': '#ef4444',
+        'description': 'The deadliest form of skin cancer. Arises from melanocytes and can metastasise to lymph nodes and visceral organs if not detected early.',
+        'symptoms': ['Asymmetric lesion','Irregular, poorly defined borders','Multiple or uneven colours','Diameter > 6 mm','Evolving in shape, size, or colour'],
+        'risk_factors': ['Personal / family history of melanoma','High mole count or atypical naevi','Fair skin, light eyes, red/blonde hair','History of blistering sunburns','Immunosuppression'],
+        'treatment': 'Wide local excision, sentinel node biopsy, immunotherapy (PD-1 inhibitors), targeted therapy (BRAF/MEK), or radiotherapy.',
+        'recommendation': '🚨🚨 URGENT: See a dermatologist today. Thin melanomas caught early are highly curable — delay worsens prognosis dramatically.',
     },
-    
     'nv': {
         'name': 'Melanocytic Nevus',
         'full_name': 'Melanocytic Nevus (Mole)',
         'severity': 'Low',
-        'color': '#10b981',
-        'description': 'A common mole. Generally harmless but should be monitored for changes.',
-        'symptoms': [
-            'Round or oval shape',
-            'Uniform color (brown or black)',
-            'Flat or slightly raised',
-            'Stable over time'
-        ],
-        'risk_factors': [
-            'Genetics',
-            'Sun exposure',
-            'Fair skin'
-        ],
-        'treatment': 'Usually no treatment needed. Removal if atypical or for cosmetic reasons.',
-        'recommendation': '✅ Monitor for changes. Use the ABCDE rule: Asymmetry, Border, Color, Diameter, Evolving.'
+        'sev_class': 'sev-low',
+        'accent': '#10b981',
+        'description': 'A common benign mole composed of clusters of melanocytes. Stable naevi are almost never dangerous.',
+        'symptoms': ['Round or oval, well-defined outline','Uniform tan, brown, or flesh colour','Flat or slightly dome-shaped','Stable over time'],
+        'risk_factors': ['Genetics','Sun exposure in childhood','Fair complexion'],
+        'treatment': 'No treatment required. Excision biopsy if clinical features raise concern.',
+        'recommendation': '✅ Monitor using the ABCDE rule — Asymmetry, Border, Colour, Diameter, Evolving. Annual skin checks are wise.',
     },
-    
     'vasc': {
         'name': 'Vascular Lesion',
         'full_name': 'Vascular Lesion',
         'severity': 'Low',
-        'color': '#10b981',
-        'description': 'Abnormalities of blood vessels in the skin, including hemangiomas and angiokeratomas.',
-        'symptoms': [
-            'Red or purple discoloration',
-            'Can be flat or raised',
-            'May blanch when pressed',
-            'Usually painless'
-        ],
-        'risk_factors': [
-            'Congenital factors',
-            'Age',
-            'Hormonal changes'
-        ],
-        'treatment': 'Laser therapy, sclerotherapy, or surgical removal if needed.',
-        'recommendation': '✅ Usually benign. Consult dermatologist if growing or causing symptoms.'
-    }
+        'sev_class': 'sev-low',
+        'accent': '#10b981',
+        'description': 'Cutaneous vascular anomalies including haemangiomas, angiokeratomas, and pyogenic granulomas.',
+        'symptoms': ['Bright red to deep purple discolouration','Flat (macular) or raised surface','Blanches under pressure (some subtypes)','Usually painless unless traumatised'],
+        'risk_factors': ['Congenital vascular malformations','Hormonal fluctuations','Ageing','Trauma'],
+        'treatment': 'Pulsed-dye or Nd:YAG laser, sclerotherapy, or surgical excision for problematic lesions.',
+        'recommendation': '✅ Usually benign. Seek review if lesion bleeds repeatedly, grows rapidly, or changes character.',
+    },
 }
 
-# ============================================
-# HELPER FUNCTIONS
-# ============================================
+CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
 
+# ─────────────────────────────────────────────
+# MODEL LOADING & INFERENCE
+# ─────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    """Load the trained model"""
     try:
         model = keras.models.load_model('skin_cancer_model.h5')
         return model, None
     except Exception as e:
         return None, str(e)
 
+
 def preprocess_image(image, target_size=(224, 224)):
-    """Preprocess image for model prediction"""
-    # Convert to RGB if needed
     if image.mode != 'RGB':
         image = image.convert('RGB')
-    
-    # Resize
     image = image.resize(target_size, Image.LANCZOS)
-    
-    # Convert to array
     img_array = np.array(image, dtype=np.float32)
-    
-    # Normalize (ImageNet normalization)
     img_array = tf.keras.applications.efficientnet.preprocess_input(img_array)
-    
-    # Add batch dimension
-    img_array = np.expand_dims(img_array, axis=0)
-    
-    return img_array
+    return np.expand_dims(img_array, axis=0)
+
 
 def predict(model, image):
-    """Make prediction on image"""
-    processed_img = preprocess_image(image)
-    predictions = model.predict(processed_img, verbose=0)[0]
-    
-    class_names = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
-    
-    # Get top prediction
-    top_idx = np.argmax(predictions)
-    top_class = class_names[top_idx]
-    top_confidence = predictions[top_idx]
-    
-    # Create results dictionary
-    results = {
-        'class': top_class,
-        'confidence': float(top_confidence),
-        'all_predictions': {
-            class_names[i]: float(predictions[i])
-            for i in range(len(class_names))
-        }
+    processed = preprocess_image(image)
+    preds = model.predict(processed, verbose=0)[0]
+    top_idx = int(np.argmax(preds))
+    return {
+        'class': CLASS_NAMES[top_idx],
+        'confidence': float(preds[top_idx]),
+        'all_predictions': {CLASS_NAMES[i]: float(preds[i]) for i in range(len(CLASS_NAMES))},
     }
-    
-    return results
 
-def create_probability_chart(predictions):
-    """Create interactive probability bar chart"""
-    df = pd.DataFrame({
-        'Class': [DISEASE_INFO[cls]['name'] for cls in predictions.keys()],
-        'Probability': list(predictions.values()),
-        'Code': list(predictions.keys())
-    })
-    
-    df = df.sort_values('Probability', ascending=True)
-    
-    # Color bars based on prediction value
-    colors = ['#667eea' if p < 0.3 else '#f59e0b' if p < 0.7 else '#10b981' 
-              for p in df['Probability']]
-    
+# ─────────────────────────────────────────────
+# CHART BUILDERS
+# ─────────────────────────────────────────────
+PLOT_LAYOUT = dict(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family='Inter', color='#94a3b8'),
+    margin=dict(l=16, r=16, t=40, b=16),
+)
+
+def probability_chart(predictions):
+    df = pd.DataFrame([
+        {'Label': DISEASE_INFO[k]['name'], 'Prob': v, 'Code': k}
+        for k, v in predictions.items()
+    ]).sort_values('Prob')
+
+    bar_colors = []
+    for p in df['Prob']:
+        if   p >= 0.6: bar_colors.append('rgba(56,189,248,0.85)')
+        elif p >= 0.25: bar_colors.append('rgba(129,140,248,0.6)')
+        else:           bar_colors.append('rgba(71,85,105,0.5)')
+
     fig = go.Figure(go.Bar(
-        x=df['Probability'],
-        y=df['Class'],
-        orientation='h',
-        marker=dict(color=colors),
-        text=[f'{p:.1%}' for p in df['Probability']],
+        x=df['Prob'], y=df['Label'], orientation='h',
+        marker=dict(color=bar_colors, line=dict(width=0)),
+        text=[f'{p:.1%}' for p in df['Prob']],
         textposition='outside',
-        hovertemplate='<b>%{y}</b><br>Probability: %{x:.2%}<extra></extra>'
+        textfont=dict(color='#94a3b8', size=12),
+        hovertemplate='<b>%{y}</b><br>%{x:.2%}<extra></extra>',
     ))
-    
     fig.update_layout(
-        title='Classification Probabilities',
-        xaxis_title='Probability',
-        yaxis_title='',
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20),
-        xaxis=dict(range=[0, 1]),
-        font=dict(size=12),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
+        **PLOT_LAYOUT,
+        title=dict(text='Class Probabilities', font=dict(color='#e2e8f0', size=14), x=0.01),
+        xaxis=dict(range=[0, 1.12], showgrid=False, zeroline=False, tickformat='.0%', color='#475569'),
+        yaxis=dict(showgrid=False, color='#94a3b8'),
+        height=360,
     )
-    
     return fig
 
-def create_gauge_chart(confidence):
-    """Create confidence gauge chart"""
+
+def gauge_chart(confidence):
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = confidence * 100,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "Confidence Level", 'font': {'size': 24}},
-        number = {'suffix': "%"},
-        gauge = {
-            'axis': {'range': [None, 100], 'tickwidth': 1},
-            'bar': {'color': "#667eea"},
-            'steps': [
-                {'range': [0, 50], 'color': "#fee2e2"},
-                {'range': [50, 70], 'color': "#fef3c7"},
-                {'range': [70, 100], 'color': "#d1fae5"}
+        mode='gauge+number',
+        value=confidence * 100,
+        number=dict(suffix='%', font=dict(size=32, color='#e2e8f0')),
+        title=dict(text='Confidence', font=dict(size=14, color='#94a3b8')),
+        gauge=dict(
+            axis=dict(range=[0, 100], tickwidth=1, tickcolor='#334155', tickfont=dict(color='#475569')),
+            bar=dict(color='rgba(56,189,248,0.85)', thickness=0.22),
+            bgcolor='rgba(0,0,0,0)',
+            borderwidth=0,
+            steps=[
+                dict(range=[0,  50], color='rgba(239,68,68,0.08)'),
+                dict(range=[50, 75], color='rgba(245,158,11,0.08)'),
+                dict(range=[75,100], color='rgba(16,185,129,0.08)'),
             ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 90
-            }
-        }
+            threshold=dict(line=dict(color='#38bdf8', width=3), thickness=0.8, value=confidence*100),
+        ),
     ))
-    
-    fig.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=50, b=20),
-        paper_bgcolor='rgba(0,0,0,0)',
-        font={'size': 16}
-    )
-    
+    fig.update_layout(**PLOT_LAYOUT, height=260)
     return fig
 
-# ============================================
-# MAIN APP
-# ============================================
-
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🔬 AI Skin Cancer Detection System</h1>', 
-                unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Advanced Deep Learning for Dermatological Analysis</p>', 
-                unsafe_allow_html=True)
-    
-    # Medical Disclaimer
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
+with st.sidebar:
     st.markdown("""
-        <div class="warning-box">
-            <h3>⚠️ IMPORTANT MEDICAL DISCLAIMER</h3>
-            <p><strong>This AI system is for educational and screening purposes only.</strong></p>
-            <ul>
-                <li>NOT a substitute for professional medical diagnosis</li>
-                <li>Should NOT be used as the sole basis for treatment decisions</li>
-                <li>Always consult a qualified dermatologist or healthcare provider</li>
-                <li>In case of concerning symptoms, seek immediate medical attention</li>
-            </ul>
+    <div style="padding: 8px 0 20px;">
+        <div style="font-family:'Inter',sans-serif; font-size:22px; font-weight:900;
+                    background:linear-gradient(90deg,#38bdf8,#818cf8);
+                    -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
+            SkinAI
         </div>
+        <div style="font-size:10px; color:#475569; letter-spacing:2px; text-transform:uppercase; margin-top:2px;">
+            Dermoscopy Analysis v1.0
+        </div>
+    </div>
+    <hr style="border-color:rgba(56,189,248,0.12); margin-bottom:20px;">
     """, unsafe_allow_html=True)
-    
-    # Sidebar
-    with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/microscope.png", width=100)
-        st.title("About")
-        st.info("""
-            This AI system uses deep learning to classify skin lesions into 7 categories:
-            
-            **Malignant:**
-            - 🔴 Melanoma (mel)
-            - 🟠 Basal Cell Carcinoma (bcc)
-            - 🟡 Actinic Keratosis (akiec)
-            
-            **Benign:**
-            - 🟢 Melanocytic Nevus (nv)
-            - 🟢 Benign Keratosis (bkl)
-            - 🟢 Dermatofibroma (df)
-            - 🟢 Vascular Lesion (vasc)
-        """)
-        
-        st.markdown("---")
-        
-        st.subheader("📊 Model Information")
-        st.write("**Architecture:** EfficientNetB3")
-        st.write("**Accuracy:** 85-92%")
-        st.write("**Training Data:** HAM10000")
-        
-        st.markdown("---")
-        
-        st.subheader("🎯 How to Use")
-        st.write("""
-            1. Upload a clear image of the skin lesion
-            2. Wait for AI analysis
-            3. Review the results and recommendations
-            4. **Consult a dermatologist for confirmation**
-        """)
-    
-    # Load model
-    model, error = load_model()
-    
-    if error:
-        st.error(f"""
-            ❌ **Model Loading Error**
-            
-            Could not load the model file. Please ensure:
-            1. The model file 'skin_cancer_model.h5' is in the same directory
-            2. The file is a valid Keras model
-            
-            Error details: {error}
-        """)
-        st.stop()
-    
-    st.success("✅ AI Model loaded successfully!")
-    
-    # Main content
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("📤 Upload Image")
-        
-        uploaded_file = st.file_uploader(
-            "Choose a skin lesion image (JPG, JPEG, PNG)",
-            type=['jpg', 'jpeg', 'png'],
-            help="Upload a clear, well-lit image of the skin lesion"
+
+    st.markdown("**Model**")
+    st.markdown("""
+    <div style="font-size:13px; color:#64748b; line-height:1.7;">
+        Architecture: <span style="color:#e2e8f0">EfficientNetB3</span><br>
+        Dataset: <span style="color:#e2e8f0">HAM10000</span><br>
+        Classes: <span style="color:#e2e8f0">7</span><br>
+        Input: <span style="color:#e2e8f0">224 × 224 px</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br>**Detectable Conditions**", unsafe_allow_html=True)
+
+    sev_colors = {'Critical': '#f87171', 'High': '#fbbf24', 'Moderate': '#fcd34d', 'Low': '#34d399'}
+    for code, info in DISEASE_INFO.items():
+        dot = sev_colors.get(info['severity'], '#94a3b8')
+        st.markdown(
+            f'<div style="display:flex; align-items:center; gap:8px; margin:5px 0; font-size:13px; color:#94a3b8;">'
+            f'<span style="width:7px;height:7px;border-radius:50%;background:{dot};flex-shrink:0;display:inline-block;"></span>'
+            f'{info["name"]}</div>',
+            unsafe_allow_html=True
         )
-        
-        if uploaded_file is not None:
-            # Display uploaded image
-            image = Image.open(uploaded_file)
-            st.image(image, caption='Uploaded Image', use_column_width=True)
-            
-            # Image info
-            st.info(f"""
-                **Image Details:**
-                - Format: {image.format}
-                - Size: {image.size[0]} x {image.size[1]} pixels
-                - Mode: {image.mode}
-            """)
-    
-    with col2:
-        if uploaded_file is not None:
-            st.subheader("🔍 Analysis")
-            
-            # Analyze button
-            if st.button("🚀 Analyze Image", type="primary", use_container_width=True):
-                with st.spinner("🧠 AI is analyzing the image..."):
-                    # Simulate processing time
-                    import time
-                    progress_bar = st.progress(0)
-                    for i in range(100):
-                        time.sleep(0.01)
-                        progress_bar.progress(i + 1)
-                    
-                    # Make prediction
-                    results = predict(model, image)
-                    
-                    # Store results in session state
-                    st.session_state['results'] = results
-                    st.session_state['image'] = image
-                    
-                st.success("✅ Analysis complete!")
-    
-    # Display results if available
-    if 'results' in st.session_state:
-        st.markdown("---")
-        
-        results = st.session_state['results']
-        predicted_class = results['class']
-        confidence = results['confidence']
-        disease_info = DISEASE_INFO[predicted_class]
-        
-        # Results header
-        st.markdown(f"""
-            <div class="result-box">
-                <h2>🎯 Prediction Results</h2>
-                <h3 style="color: {disease_info['color']};">{disease_info['full_name']}</h3>
-                <p style="font-size: 1.2rem;">Confidence: <strong>{confidence:.1%}</strong></p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Visualizations
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.plotly_chart(
-                create_probability_chart(results['all_predictions']),
-                use_container_width=True
-            )
-        
-        with col2:
-            st.plotly_chart(
-                create_gauge_chart(confidence),
-                use_container_width=True
-            )
-        
-        # Detailed Information
-        st.markdown("---")
-        st.subheader("📋 Detailed Information")
-        
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📖 Description", 
-            "🔬 Symptoms", 
-            "⚠️ Risk Factors", 
-            "💊 Treatment"
-        ])
-        
-        with tab1:
-            st.markdown(f"""
-                <div class="info-card">
-                    <h4>About {disease_info['name']}</h4>
-                    <p style="font-size: 1.1rem;">{disease_info['description']}</p>
-                    <p><strong>Severity Level:</strong> <span style="color: {disease_info['color']}; font-weight: bold;">{disease_info['severity']}</span></p>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        with tab2:
-            st.markdown("**Common Symptoms:**")
-            for symptom in disease_info['symptoms']:
-                st.markdown(f"- {symptom}")
-        
-        with tab3:
-            st.markdown("**Risk Factors:**")
-            for risk in disease_info['risk_factors']:
-                st.markdown(f"- {risk}")
-        
-        with tab4:
-            st.markdown(f"**Treatment Options:**")
-            st.write(disease_info['treatment'])
-        
-        # Recommendation
-        st.markdown("---")
-        st.markdown(f"""
-            <div class="info-card" style="border-top: 4px solid {disease_info['color']};">
-                <h3>💡 Recommendation</h3>
-                <p style="font-size: 1.2rem; font-weight: 500;">{disease_info['recommendation']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Download results
-        st.markdown("---")
-        col1, col2, col3 = st.columns([1, 1, 1])
-        
-        with col2:
-            # Create report
-            report = f"""
-SKIN LESION ANALYSIS REPORT
-Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-PREDICTION:
-  Diagnosis: {disease_info['full_name']}
-  Confidence: {confidence:.1%}
-  Severity: {disease_info['severity']}
+    st.markdown("<br>**How to use**", unsafe_allow_html=True)
+    for i, step in enumerate(['Upload a dermoscopy image','Click Analyse','Review results','Confirm with a dermatologist'], 1):
+        st.markdown(
+            f'<div style="display:flex;gap:10px;align-items:flex-start;margin:6px 0;font-size:13px;color:#64748b;">'
+            f'<span style="color:#38bdf8;font-family:Inter,sans-serif;font-weight:800;flex-shrink:0;">{i:02d}</span>'
+            f'{step}</div>',
+            unsafe_allow_html=True
+        )
 
-PROBABILITIES:
-"""
-            for cls, prob in results['all_predictions'].items():
-                report += f"  {DISEASE_INFO[cls]['name']}: {prob:.1%}\n"
-            
-            report += f"""
-DESCRIPTION:
-  {disease_info['description']}
+# ─────────────────────────────────────────────
+# MAIN — NAVBAR + HERO
+# ─────────────────────────────────────────────
+st.markdown("""
+<!-- Fixed Navbar -->
+<nav class="skinai-nav">
+  <span class="nav-logo-brand"><span class="nav-logo-skin">Skin</span>AI</span>
+  <div class="nav-links-area">
+    <a href="#">Home</a>
+    <a href="#">About</a>
+  </div>
+</nav>
+""", unsafe_allow_html=True)
 
-RECOMMENDATION:
-  {disease_info['recommendation']}
+_doc_src = DOC_IMG or "https://placehold.co/600x480/0a142d/38bdf8?text=Doctor+Image"
+st.markdown(f"""
+<div class="hero-section">
+  <!-- Left -->
+  <div class="hero-left">
+    <div class="badge">⚕️ AI-Powered Diagnosis</div>
+    <h1 class="hero-h1-new">AI-Powered<br><span class="gradient-text">Skin Care</span></h1>
+    <p class="hero-p">
+      Our intelligent system helps detect and analyze skin conditions using
+      advanced machine learning. Upload images, get instant insights, and
+      understand possible risks with clarity and confidence. Designed for
+      awareness, prevention, and smarter healthcare decisions, SkinAI brings
+      technology and medical guidance together in one place.
+    </p>
+    <div class="cta-row">
+      <a href="#" class="btn-primary-cta">Get Started →</a>
+      <a href="#" class="btn-ghost-cta">Learn More</a>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item"><span class="stat-num">7</span><span class="stat-label">Conditions Detected</span></div>
+      <div class="stat-div"></div>
+      <div class="stat-item"><span class="stat-num">92%</span><span class="stat-label">Model Accuracy</span></div>
+      <div class="stat-div"></div>
+      <div class="stat-item"><span class="stat-num">HAM10K</span><span class="stat-label">Training Dataset</span></div>
+    </div>
+  </div>
+  <!-- Right -->
+  <div class="hero-right">
+    <div class="image-frame">
+      <img src="{_doc_src}" alt="Doctor" />
+      <div class="image-glow"></div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-DISCLAIMER:
-  This AI analysis is for screening purposes only and should NOT
-  replace professional medical diagnosis. Always consult a qualified
-  dermatologist for proper evaluation and treatment.
-"""
-            
-            st.download_button(
-                label="📥 Download Report",
-                data=report,
-                file_name=f"skin_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-        <div style="text-align: center; color: #64748b; padding: 2rem;">
-            <p><strong>Skin Cancer Detection AI System</strong></p>
-            <p>Powered by Deep Learning & TensorFlow</p>
-            <p style="font-size: 0.9rem;">⚕️ For educational and screening purposes only | Always consult medical professionals</p>
+# Disclaimer
+st.markdown("""
+<div class="disclaimer">
+    <h4>⚠️ Medical Disclaimer</h4>
+    This tool is for <strong style="color:#e2e8f0">educational and screening purposes only</strong>.
+    It is not a substitute for professional medical diagnosis.
+    Always consult a qualified dermatologist before making clinical decisions.
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# LOAD MODEL
+# ─────────────────────────────────────────────
+model, error = load_model()
+
+if error:
+    st.markdown(f"""
+    <div class="glass-card" style="border-left:4px solid #ef4444;">
+        <h4 style="color:#f87171; margin-bottom:8px;">⚠️ Model Not Found</h4>
+        <p style="color:#94a3b8; font-size:0.9rem; line-height:1.7;">
+            Place <code style="color:#38bdf8">skin_cancer_model.h5</code> in the same directory as this script.<br>
+            Error: <code style="color:#f87171">{error}</code>
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+else:
+    st.success("✅  Model loaded — ready to analyse")
+
+st.markdown('<hr style="border-color:rgba(56,189,248,0.1);margin:28px 0;">', unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# UPLOAD + ANALYSIS COLUMNS
+# ─────────────────────────────────────────────
+
+st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+
+st.markdown("#### 📤 Upload Lesion Image")
+
+uploaded_file = st.file_uploader(
+    "JPG · JPEG · PNG — Clear, well-lit dermoscopy photos work best",
+    type=['jpg', 'jpeg', 'png'],
+)
+
+if uploaded_file:
+
+    # Analyse button directly under upload
+    run = st.button("🚀  Analyse Image", use_container_width=True)
+
+    if run:
+        image = Image.open(uploaded_file)
+
+        # Fake loading animation
+        import time
+        prog = st.progress(0, text="Running inference…")
+        for i in range(100):
+            time.sleep(0.01)
+            prog.progress(i + 1)
+        prog.empty()
+
+        results = predict(model, image)
+        st.session_state['results'] = results
+        st.session_state['image'] = image
+
+        st.success("✅  Analysis complete")
+
+# Display image AFTER analysis
+if 'image' in st.session_state:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.image(
+        st.session_state['image'],
+        use_container_width=True
+    )
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# RESULTS
+# ─────────────────────────────────────────────
+if 'results' in st.session_state and uploaded_file:
+    res   = st.session_state['results']
+    cls   = res['class']
+    conf  = res['confidence']
+    info  = DISEASE_INFO[cls]
+
+    st.markdown('<hr style="border-color:rgba(56,189,248,0.1);margin:32px 0 24px;">', unsafe_allow_html=True)
+
+    # ── Result banner
+    st.markdown(f"""
+    <div class="result-banner">
+        <div style="font-size:11px; color:#475569; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px;">Top Prediction</div>
+        <div class="result-class">{info['full_name']}</div>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+            <span class="conf-pill">Confidence {conf:.1%}</span>
+            <span class="sev-chip {info['sev_class']}">{info['severity']}</span>
         </div>
+    </div>
     """, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+    # ── Charts
+    ch1, ch2 = st.columns([3, 2], gap="large")
+    with ch1:
+        st.plotly_chart(probability_chart(res['all_predictions']), use_container_width=True, config={'displayModeBar': False})
+    with ch2:
+        st.plotly_chart(gauge_chart(conf), use_container_width=True, config={'displayModeBar': False})
+
+    # ── Detail tabs
+    st.markdown("#### 📋 Clinical Detail")
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Symptoms", "Risk Factors", "Treatment"])
+
+    with tab1:
+        st.markdown(f"""
+        <div class="info-section">
+            <h5>About this condition</h5>
+            <p>{info['description']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tab2:
+        items = "".join(f"<li>{s}</li>" for s in info['symptoms'])
+        st.markdown(f'<div class="info-section"><h5>Common Symptoms</h5><ul>{items}</ul></div>', unsafe_allow_html=True)
+
+    with tab3:
+        items = "".join(f"<li>{r}</li>" for r in info['risk_factors'])
+        st.markdown(f'<div class="info-section"><h5>Risk Factors</h5><ul>{items}</ul></div>', unsafe_allow_html=True)
+
+    with tab4:
+        st.markdown(f"""
+        <div class="info-section">
+            <h5>Treatment Options</h5>
+            <p>{info['treatment']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Recommendation
+    st.markdown(f'<div class="rec-bar">{info["recommendation"]}</div>', unsafe_allow_html=True)
+
+    # ── Download
+    st.markdown('<br>', unsafe_allow_html=True)
+    report_lines = [
+        "SKINAI — LESION ANALYSIS REPORT",
+        f"Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "PREDICTION",
+        f"  Diagnosis  : {info['full_name']}",
+        f"  Confidence : {conf:.1%}",
+        f"  Severity   : {info['severity']}",
+        "",
+        "CLASS PROBABILITIES",
+        *[f"  {DISEASE_INFO[k]['name']:<30} {v:.1%}" for k, v in res['all_predictions'].items()],
+        "",
+        "DESCRIPTION",
+        f"  {info['description']}",
+        "",
+        "RECOMMENDATION",
+        f"  {info['recommendation']}",
+        "",
+        "─" * 60,
+        "DISCLAIMER: Educational screening tool only.",
+        "Not a substitute for professional medical diagnosis.",
+        "Always consult a qualified dermatologist.",
+    ]
+
+    _, dc, _ = st.columns([1, 1, 1])
+    with dc:
+        st.download_button(
+            label="📥  Download Report",
+            data="\n".join(report_lines),
+            file_name=f"skinai_{cls}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+# ─────────────────────────────────────────────
+# FOOTER
+# ─────────────────────────────────────────────
+st.markdown('<hr style="border-color:rgba(56,189,248,0.08); margin-top:48px;">', unsafe_allow_html=True)
+st.markdown("""
+<div class="footer">
+    <span>SkinAI</span> &nbsp;·&nbsp; Powered by EfficientNetB3 &amp; TensorFlow<br>
+    <span style="font-family:Inter; font-weight:400; font-size:11px; color:#334155;
+                 -webkit-text-fill-color:#334155; background:none;">
+        ⚕️ For educational and screening purposes only &nbsp;·&nbsp; Always consult a medical professional
+    </span>
+</div>
+""", unsafe_allow_html=True)
