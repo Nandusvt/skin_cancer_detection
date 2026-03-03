@@ -136,6 +136,12 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
 }
 .stTextInput > label { display: none !important; }
 
+/* Hide "Press Enter to submit form" */
+.stTextInput small,
+.stTextInput [data-testid="InputInstructions"],
+div[data-baseweb="form-control"] small,
+small { display: none !important; }
+
 /* Primary button — blue gradient */
 div[data-testid="stForm"] .stButton > button {
     background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%) !important;
