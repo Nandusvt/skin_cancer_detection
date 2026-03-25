@@ -14,6 +14,8 @@ import pandas as pd
 from datetime import datetime
 import base64
 import os
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 
 # ─────────────────────────────────────────────
@@ -611,10 +613,13 @@ CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
 @st.cache_resource
 def load_model():
     try:
-        model = keras.models.load_model('most_efficinetafterphase3.keras')
+        model = keras.models.load_model('efficientnetb4_85.h5')
+        print([layer.name for layer in model.layers if 'conv' in layer.name])
         return model, None
     except Exception as e:
-        return None, str(e)
+        st.error(f"❌ Error: {str(e)}")
+        import traceback
+        st.write(traceback.format_exc())
 
 
 def preprocess_image(image, target_size=(300, 300)):
@@ -635,6 +640,63 @@ def predict(model, image):
         'confidence': float(preds[top_idx]),
         'all_predictions': {CLASS_NAMES[i]: float(preds[i]) for i in range(len(CLASS_NAMES))},
     }
+
+def get_gradcam(model, image, pred_class_idx, last_conv_layer_name="top_conv"):
+    """Generate GradCAM visualization for the predicted class."""
+    import tensorflow as tf
+    
+    # Preprocess image
+    processed = preprocess_image(image)
+    
+    # Create a model to extract activations from the last conv layer
+    last_conv_layer = model.get_layer(last_conv_layer_name)
+    grad_model = tf.keras.models.Model(
+        inputs=model.inputs[0],
+        outputs=[last_conv_layer.output, model.outputs[0]]  # FIX: Use outputs[0]
+    )
+    
+    with tf.GradientTape() as tape:
+        conv_outputs, predictions = grad_model(processed)
+        loss = predictions[:, pred_class_idx]
+    
+    # Compute gradients
+    grads = tape.gradient(loss, conv_outputs)
+    
+    # Average pooling of gradients
+    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+    
+    # Weight activations by gradients
+    conv_outputs = conv_outputs[0]
+    heatmap = tf.reduce_sum(tf.multiply(pooled_grads, conv_outputs), axis=-1)
+    
+    # Normalize heatmap
+    heatmap = tf.maximum(heatmap, 0)
+    heatmap = heatmap / (tf.reduce_max(heatmap) + 1e-10)
+    
+    return heatmap.numpy()
+
+def overlay_gradcam(image, heatmap, alpha=0.4):
+    """Overlay GradCAM heatmap on the original image."""
+    from PIL import Image as PILImage
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    
+    # Resize heatmap to match image
+    heatmap_resized = tf.image.resize(
+        tf.expand_dims(heatmap, axis=-1),
+        [image.size[1], image.size[0]]
+    ).numpy().squeeze()
+    
+    # Normalize heatmap to 0-1
+    heatmap_resized = (heatmap_resized - heatmap_resized.min()) / (heatmap_resized.max() - heatmap_resized.min() + 1e-10)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(2.5, 2), dpi=100)
+    ax.imshow(image)
+    ax.imshow(heatmap_resized, cmap='jet', alpha=alpha)
+    ax.axis('off')
+    plt.tight_layout(pad=0)
+    return fig
 
 # ─────────────────────────────────────────────
 # CHART BUILDERS
@@ -841,7 +903,7 @@ model, error = load_model()
 # ─────────────────────────────────────────────
 
 st.markdown('<div id="upload" class="glass-card">', unsafe_allow_html=True)
-st.markdown("#### 📤 Upload Lesion Image")
+st.markdown("#### Upload Lesion Image")
 
 col_left, col_right = st.columns([3, 2], gap="large")
 
@@ -864,8 +926,9 @@ with col_left:
     """, unsafe_allow_html=True)
   
     uploaded_file = st.file_uploader(
-        "",
+        "Upload image",
         type=['jpg', 'jpeg', 'png'],
+        label_visibility="collapsed",
     )
 
     # Badges (moved below uploader text)
@@ -876,7 +939,7 @@ with col_left:
     if uploaded_file:
         _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
-            run = st.button("Analyse", use_container_width=True)
+            run = st.button("Analyse", width="stretch")
 
         if run:
             image = Image.open(uploaded_file)
@@ -903,7 +966,7 @@ with col_right:
         ">
         """, unsafe_allow_html=True)
 
-        st.image(st.session_state['image'], use_container_width=True)
+        st.image(st.session_state['image'], width="stretch")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -935,9 +998,28 @@ if 'results' in st.session_state and uploaded_file:
     # ── Charts
     ch1, ch2 = st.columns([3, 2], gap="large")
     with ch1:
-        st.plotly_chart(probability_chart(res['all_predictions']), use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(probability_chart(res['all_predictions']), width="stretch", config={'displayModeBar': False})
     with ch2:
-        st.plotly_chart(gauge_chart(conf), use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(gauge_chart(conf), width="stretch", config={'displayModeBar': False})
+
+    # ── GradCAM Visualization
+    st.markdown("#### Feature Activation Map")
+    st.markdown("""
+    
+    """, unsafe_allow_html=True)
+
+    with st.spinner("Generating activation map…"):
+        try:
+            heatmap = get_gradcam(model, st.session_state['image'], CLASS_NAMES.index(cls))
+            fig = overlay_gradcam(st.session_state['image'], heatmap, alpha=0.5)
+            _, col, _ = st.columns([1, 2, 1])
+            with col:
+                st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+        except Exception as e:
+            st.error(f"❌ Error generating heatmap: {str(e)}")
+            import traceback
+            st.write(traceback.format_exc())
 
     # ── Detail tabs
     st.markdown("#### 📋 Clinical Detail")
@@ -1003,7 +1085,7 @@ if 'results' in st.session_state and uploaded_file:
             data="\n".join(report_lines),
             file_name=f"skinai_{cls}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain",
-            use_container_width=True,
+            width="stretch",
         )
 
 # ─────────────────────────────────────────────
