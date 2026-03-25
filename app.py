@@ -493,6 +493,37 @@ hr { border-color: var(--border) !important; }
   background: linear-gradient(90deg,#38bdf8,#818cf8);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
+
+/* ── Analyse Progress Glow ── */
+.analyse-progress-wrapper {
+    width: 100%;
+    height: 6px;
+    border-radius: 10px;
+    background: rgba(56,189,248,0.08);
+    overflow: hidden;
+    margin-top: 12px;
+    position: relative;
+}
+
+.analyse-progress-bar {
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(56,189,248,0.8),
+        rgba(129,140,248,0.9),
+        rgba(192,132,252,0.8),
+        transparent
+    );
+    animation: analyseGlow 1.2s linear infinite;
+    filter: blur(1px);
+}
+
+@keyframes analyseGlow {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+}
 </style>
 
 <!-- Animated orbs -->
@@ -848,7 +879,7 @@ st.markdown("""
     </div>
   <div class="nav-links-area">
     <a href="#home">Home</a>
-    <a href="#upload">Upload</a>
+    <a href="#upload">Logout</a>
   </div>
 </nav>
 """, unsafe_allow_html=True)
@@ -868,8 +899,7 @@ st.markdown(f"""
       technology and medical guidance together in one place.
     </p>
     <div class="cta-row">
-      <a href="#" class="btn-primary-cta">Get Started →</a>
-      <a href="#" class="btn-ghost-cta">Learn More</a>
+      <a href="#upload" class="btn-primary-cta">Get Started →</a>
     </div>
     <div class="stats-row">
       <div class="stat-item"><span class="stat-num">7</span><span class="stat-label">Conditions Detected</span></div>
@@ -902,14 +932,18 @@ model, error = load_model()
 # UPLOAD + ANALYSIS COLUMNS
 # ─────────────────────────────────────────────
 
-st.markdown('<div id="upload" class="glass-card">', unsafe_allow_html=True)
-st.markdown("#### Upload Lesion Image")
+
+
+st.markdown("""
+<h4  class="gradient-text" style="font-size: 30px;
+font-weight: 900;margin-bottom:10px;">Upload Lesion Image</h4>
+""", unsafe_allow_html=True)
 
 col_left, col_right = st.columns([3, 2], gap="large")
 
 with col_left:
     st.markdown("""
-    <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+    <div id="upload" style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
         <span style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);
                     padding:6px 14px; border-radius:50px; font-size:12px; color:#ffffff;">
             Supported: JPG, JPEG, PNG
@@ -937,22 +971,34 @@ with col_left:
    
 
     if uploaded_file:
-        _, btn_col, _ = st.columns([1, 2, 1])
-        with btn_col:
-            run = st.button("Analyse", width="stretch")
+      _, btn_col, _ = st.columns([1, 2, 1])
+      with btn_col:
+          run = st.button("Analyse", width="stretch")
 
-        if run:
-            image = Image.open(uploaded_file)
-            import time
-            prog = st.progress(0, text="Running inference…")
-            for i in range(100):
-                time.sleep(0.01)
-                prog.progress(i + 1)
-            prog.empty()
-            results = predict(model, image)
-            st.session_state['results'] = results
-            st.session_state['image'] = image
+      if run:
+          # Show animated light bar
+          progress_placeholder = st.empty()
 
+          progress_placeholder.markdown("""
+          <div class="analyse-progress-wrapper">
+              <div class="analyse-progress-bar"></div>
+          </div>
+          """, unsafe_allow_html=True)
+
+          # Simulate processing
+          import time
+          image = Image.open(uploaded_file)
+
+          # (optional delay for realism)
+          time.sleep(1.2)
+
+          results = predict(model, image)
+
+          st.session_state['results'] = results
+          st.session_state['image'] = image
+
+          # Remove animation after done
+          progress_placeholder.empty()
 
 with col_right:
     if 'image' in st.session_state:
@@ -1003,7 +1049,13 @@ if 'results' in st.session_state and uploaded_file:
         st.plotly_chart(gauge_chart(conf), width="stretch", config={'displayModeBar': False})
 
     # ── GradCAM Visualization
-    st.markdown("#### Feature Activation Map")
+    st.markdown("""
+    <h4 class="gradient-text" style="font-size: 30px;
+    font-weight: 900;margin-bottom:10px;">Feature Activation Map</h4>
+    """, unsafe_allow_html=True)
+
+   
+  
     st.markdown("""
     
     """, unsafe_allow_html=True)
@@ -1022,7 +1074,11 @@ if 'results' in st.session_state and uploaded_file:
             st.write(traceback.format_exc())
 
     # ── Detail tabs
-    st.markdown("#### 📋 Clinical Detail")
+ 
+    st.markdown("""
+    <h4  class="gradient-text" style="font-size: 30px;
+    font-weight: 900;margin-bottom:10px;">Clinical Detail</h4>
+    """, unsafe_allow_html=True)
     tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Symptoms", "Risk Factors", "Treatment"])
 
     with tab1:
@@ -1081,7 +1137,7 @@ if 'results' in st.session_state and uploaded_file:
     _, dc, _ = st.columns([1, 1, 1])
     with dc:
         st.download_button(
-            label="📥  Download Report",
+            label="  Download Report",
             data="\n".join(report_lines),
             file_name=f"skinai_{cls}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain",
