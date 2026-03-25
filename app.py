@@ -17,6 +17,10 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+if "logout" in st.query_params and st.query_params["logout"] == "true":
+    st.session_state["authenticated"] = False
+    st.query_params.clear()
+    st.rerun()
 
 # ─────────────────────────────────────────────
 # AUTH GATE — must be FIRST thing in the file
@@ -879,7 +883,7 @@ st.markdown("""
     </div>
   <div class="nav-links-area">
     <a href="#home">Home</a>
-    <a href="#upload">Logout</a>
+    <a href="?logout=true" target="_self">Logout</a>
   </div>
 </nav>
 """, unsafe_allow_html=True)
