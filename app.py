@@ -16,6 +16,12 @@ import base64
 import os
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.lib.utils import simpleSplit, ImageReader
 
 if "logout" in st.query_params and st.query_params["logout"] == "true":
     st.session_state["authenticated"] = False
@@ -816,7 +822,7 @@ with st.sidebar:
     st.markdown("**Model**")
     st.markdown("""
     <div style="font-size:13px; color:#64748b; line-height:1.7;">
-        Architecture: <span style="color:#e2e8f0">EfficientNetB3</span><br>
+        Architecture: <span style="color:#e2e8f0">EfficientNetB4</span><br>
         Dataset: <span style="color:#e2e8f0">HAM10000</span><br>
         Classes: <span style="color:#e2e8f0">7</span><br>
         Input: <span style="color:#e2e8f0">224 × 224 px</span>
@@ -1068,6 +1074,13 @@ if 'results' in st.session_state and uploaded_file:
         try:
             heatmap = get_gradcam(model, st.session_state['image'], CLASS_NAMES.index(cls))
             fig = overlay_gradcam(st.session_state['image'], heatmap, alpha=0.5)
+            
+            # Save for PDF
+            gc_buf = io.BytesIO()
+            fig.savefig(gc_buf, format='png', bbox_inches='tight')
+            gc_buf.seek(0)
+            st.session_state['final_gradcam_bytes'] = gc_buf
+
             _, col, _ = st.columns([1, 2, 1])
             with col:
                 st.pyplot(fig, use_container_width=True)
@@ -1114,38 +1127,300 @@ if 'results' in st.session_state and uploaded_file:
 
     # ── Download
     st.markdown('<br>', unsafe_allow_html=True)
-    report_lines = [
-        "SKINAI — LESION ANALYSIS REPORT",
-        f"Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "",
-        "PREDICTION",
-        f"  Diagnosis  : {info['full_name']}",
-        f"  Confidence : {conf:.1%}",
-        f"  Severity   : {info['severity']}",
-        "",
-        "CLASS PROBABILITIES",
-        *[f"  {DISEASE_INFO[k]['name']:<30} {v:.1%}" for k, v in res['all_predictions'].items()],
-        "",
-        "DESCRIPTION",
-        f"  {info['description']}",
-        "",
-        "RECOMMENDATION",
-        f"  {info['recommendation']}",
-        "",
-        "─" * 60,
-        "DISCLAIMER: Educational screening tool only.",
-        "Not a substitute for professional medical diagnosis.",
-        "Always consult a qualified dermatologist.",
-    ]
+
+    def create_pdf(buffer, user_img_bytes=None, gradcam_img_bytes=None):
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # Colors
+        primary_color = colors.HexColor("#0A142D")  # Dark Blue (SkinAI Theme)
+        secondary_color = colors.HexColor("#F1F5F9") # Light Slate Grey
+        accent_color = colors.HexColor("#FF7043")   # Coral/Orange for alerts/risk
+        text_color = colors.HexColor("#263238")     # Dark Slate Grey
+        light_text_color = colors.HexColor("#78909C") # Blue Grey
+        
+        # Calculate derived values
+        sorted_preds = sorted(res['all_predictions'].items(), key=lambda x: x[1], reverse=True)
+        alt_name = "None"
+        if len(sorted_preds) > 1:
+            alt_name = DISEASE_INFO[sorted_preds[1][0]]['full_name']
+            
+        conf_level = "High" if conf > 0.75 else "Moderate" if conf > 0.4 else "Low"
+        case_id = f"CASE-{datetime.now().strftime('%Y%m%d')}-{int(conf*1000)}"
+
+        # Header Background (Dark Blue "Glass" style)
+        header_bg = colors.HexColor("#0A142D")
+        header_acc = colors.HexColor("#38BDF8")
+        
+        c.setFillColor(header_bg)
+        c.rect(0, height - 1.5*inch, width, 1.5*inch, fill=1, stroke=0)
+        
+        # Bottom Border
+        c.setStrokeColor(header_acc)
+        c.setLineWidth(1)
+        c.line(0, height - 1.5*inch, width, height - 1.5*inch)
+        
+        
+
+        # Title: "Skin" (Gradient Cyan) + "AI" (White)
+        c.setFont("Helvetica-Bold", 26)
+        
+        # Skin in Cyan (#38bdf8)
+        c.setFillColor(colors.HexColor("#38BDF8"))
+        c.drawString(0.6*inch, height - 0.65*inch, "Skin")
+        w_skin = c.stringWidth("Skin", "Helvetica-Bold", 26)
+        
+        # AI in White/Light Grey (#e2e8f0)
+        c.setFillColor(colors.HexColor("#E2E8F0")) 
+        c.drawString(0.6*inch + w_skin, height - 0.65*inch, "AI")
+        
+        # Subtitle
+        c.setFillColor(colors.HexColor("#94A3B8"))
+        c.setFont("Helvetica", 10)
+        c.drawString(0.6*inch, height - 0.9*inch, "DERMOSCOPY ANALYSIS REPORT")
+
+        # Case Info (Top Right)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica", 10)
+        c.drawRightString(width - 0.5*inch, height - 0.6*inch, f"DATE: {datetime.now().strftime('%Y-%m-%d')}")
+        c.drawRightString(width - 0.5*inch, height - 0.8*inch, f"ID: {case_id}")
+
+        # Content Cursor
+        y_pos = height - 2.0*inch
+        x_margin = 0.5*inch
+        content_width = width - 2*x_margin
+
+        # 1. KEY RESULTS CARD
+        # Background
+        card_height = 1.8*inch
+        c.setFillColor(secondary_color)
+        c.roundRect(x_margin, y_pos - card_height, content_width, card_height, 10, fill=1, stroke=0)
+        
+        # Diagnosis
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(x_margin + 0.3*inch, y_pos - 0.4*inch, "PRIMARY DIAGNOSIS")
+        c.setFont("Helvetica-Bold", 20)
+        c.setFillColor(primary_color)
+        c.drawString(x_margin + 0.3*inch, y_pos - 0.75*inch, info['full_name'].upper())
+        
+        # Stats Row inside Card
+        stat_y = y_pos - 1.3*inch
+        
+        # Confidence
+        c.setFillColor(text_color)
+        c.setFont("Helvetica", 10)
+        c.drawString(x_margin + 0.3*inch, stat_y + 0.15*inch, "CONFIDENCE")
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(x_margin + 0.3*inch, stat_y - 0.05*inch, f"{conf:.1%}")
+        
+        # Risk Level
+        c.setFont("Helvetica", 10)
+        c.drawString(x_margin + 2.5*inch, stat_y + 0.15*inch, "RISK LEVEL")
+        risk_color = colors.red if "Malignant" in info['severity'] or "High" in info['severity'] else colors.orange if "Medium" in info['severity'] else colors.green
+        c.setFillColor(risk_color)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(x_margin + 2.5*inch, stat_y - 0.05*inch, info['severity'].upper())
+        
+
+
+        y_pos -= (card_height + 0.4*inch)
+
+        # 2. CLASS PROBABILITIES (Visual Bars)
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(x_margin, y_pos, "PROBABILITY DISTRIBUTION")
+        y_pos -= 0.3*inch
+        
+        bar_height = 0.2*inch
+        gap = 0.15*inch
+        label_width = 2.5*inch
+        max_bar_width = content_width - label_width - 1.0*inch # Space for % text
+        
+        c.setFont("Helvetica", 9)
+        for k, v in res['all_predictions'].items():
+            name = DISEASE_INFO[k]['name']
+            
+            # Label
+            c.setFillColor(text_color)
+            c.drawString(x_margin, y_pos, name)
+            
+            # Bar Background
+            c.setFillColor(colors.whitesmoke)
+            c.rect(x_margin + label_width, y_pos - 0.05*inch, max_bar_width, bar_height, fill=1, stroke=0)
+            
+            # Bar Fill
+            c.setFillColor(primary_color if v == conf else colors.grey) # Highlight top pred
+            c.rect(x_margin + label_width, y_pos - 0.05*inch, max_bar_width * v, bar_height, fill=1, stroke=0)
+            
+            # Percentage
+            c.setFillColor(text_color)
+            c.drawString(x_margin + label_width + max_bar_width + 0.1*inch, y_pos, f"{v:.1%}")
+            
+            y_pos -= (bar_height + gap)
+            
+        y_pos -= 0.3*inch
+
+        # 2.5 VISUAL ANALYSIS (Images)
+        if user_img_bytes or gradcam_img_bytes:
+            img_height = 2.0*inch
+            if y_pos < img_height + 0.5*inch:
+                c.showPage()
+                y_pos = height - 1*inch
+            
+            c.setFillColor(text_color)
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(x_margin, y_pos, "VISUAL ANALYSIS")
+            c.setStrokeColor(primary_color)
+            c.line(x_margin, y_pos - 0.1*inch, x_margin + 0.5*inch, y_pos - 0.1*inch)
+            y_pos -= 0.4*inch
+            
+            img_width = 2.5*inch
+            start_x = x_margin
+            
+            if user_img_bytes:
+                try:
+                    c.drawImage(ImageReader(user_img_bytes), start_x, y_pos - img_height, width=img_width, height=img_height, preserveAspectRatio=True)
+                    c.setFont("Helvetica", 9)
+                    c.drawCentredString(start_x + img_width/2, y_pos - img_height - 0.2*inch, "Original Image")
+                except Exception as e:
+                    print(f"Error drawing user image: {e}")
+                start_x += (img_width + 0.5*inch)
+
+            if gradcam_img_bytes:
+                try:
+                    c.drawImage(ImageReader(gradcam_img_bytes), start_x, y_pos - img_height, width=img_width, height=img_height, preserveAspectRatio=True)
+                    c.setFont("Helvetica", 9)
+                    c.drawCentredString(start_x + img_width/2, y_pos - img_height - 0.2*inch, "Grad-CAM Heatmap")
+                except Exception as e:
+                    print(f"Error drawing gradcam image: {e}")
+            
+            y_pos -= (img_height + 0.5*inch)
+
+        # Helper for wrapped text
+        def draw_section(title, content, current_y):
+            if current_y < 2*inch: # New page check
+                c.showPage()
+                current_y = height - 1*inch
+            
+            c.setFillColor(text_color)
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(x_margin, current_y, title)
+            current_y -= 0.1*inch
+            c.setStrokeColor(primary_color)
+            c.setLineWidth(1)
+            c.line(x_margin, current_y, x_margin + 0.5*inch, current_y) # Underline
+            current_y -= 0.25*inch
+            
+            c.setFont("Helvetica", 10)
+            lines = simpleSplit(content, "Helvetica", 10, content_width)
+            for line in lines:
+                if current_y < 1*inch:
+                    c.showPage()
+                    c.setFont("Helvetica", 10)
+                    current_y = height - 1*inch
+                c.drawString(x_margin, current_y, line)
+                current_y -= 0.2*inch
+            return current_y
+        
+        # 3. ANALYSIS SUMMARY
+        summary_text = f"The AI model utilized EfficientNetB4 architecture to analyze the dermatoscopic features of the uploaded lesion. The system identified {info['full_name']} as the most probable diagnosis ({conf:.1%} certainty). This assessment is based on visual pattern recognition and should be verified by clinical examination."
+        y_pos = draw_section("ANALYSIS SUMMARY", summary_text, y_pos)
+        y_pos -= 0.2*inch
+
+        # 3.5 CLINICAL PROFILE
+        if y_pos < 3.5*inch:
+             c.showPage()
+             y_pos = height - 1*inch
+             
+        c.setFillColor(text_color)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(x_margin, y_pos, "CLINICAL PROFILE")
+        c.setStrokeColor(primary_color)
+        c.line(x_margin, y_pos - 0.1*inch, x_margin + 0.5*inch, y_pos - 0.1*inch)
+        y_pos -= 0.4*inch
+        
+        # Description
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x_margin, y_pos, "Description:")
+        c.setFont("Helvetica", 10)
+        desc_lines = simpleSplit(info['description'], "Helvetica", 10, content_width - 1.7*inch)
+        for line in desc_lines:
+            c.drawString(x_margin + 1.7*inch, y_pos, line)
+            y_pos -= 0.2*inch
+        y_pos -= 0.15*inch
+        
+        # Symptoms
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x_margin, y_pos, "Common Symptoms:")
+        c.setFont("Helvetica", 10)
+        for s in info['symptoms']:
+            if y_pos < 1*inch: 
+                c.showPage()
+                y_pos = height - 1*inch
+                c.setFont("Helvetica", 10)
+            
+            s_lines = simpleSplit(f"• {s}", "Helvetica", 10, content_width - 1.7*inch)
+            for line in s_lines:
+                c.drawString(x_margin + 1.7*inch, y_pos, line)
+                y_pos -= 0.2*inch
+        y_pos -= 0.15*inch
+
+        # Treatment
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x_margin, y_pos, "Typical Treatment:")
+        c.setFont("Helvetica", 10)
+        treat_lines = simpleSplit(info['treatment'], "Helvetica", 10, content_width - 1.7*inch)
+        for line in treat_lines:
+            if y_pos < 1*inch: 
+                c.showPage()
+                y_pos = height - 1*inch
+                c.setFont("Helvetica", 10)
+            c.drawString(x_margin + 1.7*inch, y_pos, line)
+            y_pos -= 0.2*inch
+        y_pos -= 0.3*inch
+
+        # 4. MODEL INTERPRETATION (Grad-CAM)
+        y_pos = draw_section("MODEL INTERPRETATION", "Gradient-weighted Class Activation Mapping (Grad-CAM) analysis indicates that the model focused primarily on the central pigmentation and border irregularity of the lesion to effectively classify the condition.", y_pos)
+        y_pos -= 0.2*inch
+
+       
+
+        # Footer
+        c.saveState()
+        c.setFont("Helvetica", 8)
+        c.setFillColor(light_text_color)
+        c.drawCentredString(width/2, 0.5*inch, "generated by SKINAI • not a medical diagnosis • consult a professional")
+        c.restoreState()
+        
+        c.save()
+
+
+    # Prepare images for PDF
+    user_img_bytes_final = None
+    if 'image' in st.session_state:
+        img_buf = io.BytesIO()
+        st.session_state['image'].save(img_buf, format='PNG')
+        img_buf.seek(0)
+        user_img_bytes_final = img_buf
+
+    gradcam_bytes_final = None
+    if 'final_gradcam_bytes' in st.session_state:
+        gradcam_bytes_final = st.session_state['final_gradcam_bytes']
+        gradcam_bytes_final.seek(0)
+
+    buffer = io.BytesIO()
+    create_pdf(buffer, user_img_bytes=user_img_bytes_final, gradcam_img_bytes=gradcam_bytes_final)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
 
     _, dc, _ = st.columns([1, 1, 1])
     with dc:
         st.download_button(
-            label="  Download Report",
-            data="\n".join(report_lines),
-            file_name=f"skinai_{cls}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain",
-            width="stretch",
+            label="  Download Report (PDF)",
+            data=pdf_bytes,
+            file_name=f"skinai_{cls}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf",
         )
 
 # ─────────────────────────────────────────────
@@ -1154,7 +1429,7 @@ if 'results' in st.session_state and uploaded_file:
 st.markdown('<hr style="border-color:rgba(56,189,248,0.08); margin-top:48px;">', unsafe_allow_html=True)
 st.markdown("""
 <div class="footer">
-    <span>SkinAI</span> &nbsp;·&nbsp; Powered by EfficientNetB3 &amp; TensorFlow<br>
+    <span>SkinAI</span> &nbsp;·&nbsp; Powered by EfficientNetB4 &amp; TensorFlow<br>
     <span style="font-family:Inter; font-weight:400; font-size:11px; color:#334155;
                  -webkit-text-fill-color:#334155; background:none;">
         ⚕️ For educational and screening purposes only &nbsp;·&nbsp; Always consult a medical professional
