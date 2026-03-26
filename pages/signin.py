@@ -1,4 +1,7 @@
 ﻿import streamlit as st
+from streamlit_cookies_manager import EncryptedCookieManager
+
+
 import pyrebase
 import os
 import requests
@@ -7,6 +10,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+cookies = EncryptedCookieManager(
+    prefix="skinai_",
+    password="12345"   # any string
+)
+
+if not cookies.ready():
+    st.stop()
+
+if cookies.get("authenticated") == "true":
+    st.session_state["authenticated"] = True
+    st.session_state["user_token"] = cookies.get("token")
 # ─────────────────────────────────────────────
 # FIREBASE CONFIG
 # ─────────────────────────────────────────────
@@ -83,7 +97,7 @@ if "code" in params and not st.session_state.get("authenticated"):
             st.session_state["user_email"]    = result.get("email", "")
             st.session_state["user_token"]    = result.get("idToken", "")
             st.query_params.clear()
-            st.switch_page("app.py")
+            st.rerun()
         except Exception as e:
             st.error(f"Google sign-in failed: {e}")
             st.query_params.clear()
@@ -235,11 +249,18 @@ with card_col:
             if email and password:
                 try:
                     user = auth.sign_in_with_email_and_password(email, password)
+
                     st.session_state["authenticated"] = True
                     st.session_state["user_email"]    = email
                     st.session_state["user_token"]    = user["idToken"]
+
+                    # ✅ ADD THIS LINE (important)
+                    cookies["authenticated"] = "true"
+                    cookies["token"] = user["idToken"]
+                    cookies.save()
+
                     st.success(f"Welcome back, {email}!")
-                    st.switch_page("app.py")
+                    st.rerun()
                 except Exception as e:
                     msg = str(e)
                     if "INVALID_PASSWORD" in msg or "INVALID_LOGIN_CREDENTIALS" in msg:

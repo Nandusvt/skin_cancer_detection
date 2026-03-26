@@ -23,14 +23,31 @@ from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.utils import simpleSplit, ImageReader
 
+from streamlit_cookies_manager import EncryptedCookieManager
+
+cookies = EncryptedCookieManager(
+    prefix="skinai_",
+    password="12345"
+)
+
+if not cookies.ready():
+    st.stop()
+
 if "logout" in st.query_params and st.query_params["logout"] == "true":
     st.session_state["authenticated"] = False
+    cookies["authenticated"] = "false"
+    cookies["token"] = ""
+    cookies.save()
     st.query_params.clear()
     st.rerun()
 
 # ─────────────────────────────────────────────
 # AUTH GATE — must be FIRST thing in the file
 # ─────────────────────────────────────────────
+if cookies.get("authenticated") == "true":
+    st.session_state["authenticated"] = True
+    st.session_state["user_token"] = cookies.get("token")
+
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
     st.switch_page("pages/signin.py")
     st.stop()
