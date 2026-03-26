@@ -888,7 +888,7 @@ st.markdown("""
         <span class="nav-logo-brand"><span class="nav-logo-skin">Skin</span>AI</span>
     </div>
   <div class="nav-links-area">
-    <a href="#home">Home</a>
+    <a href="/conditions_guide" target="_self">Guide</a>
     <a href="?logout=true" target="_self">Logout</a>
   </div>
 </nav>
