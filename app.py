@@ -1123,7 +1123,7 @@ if 'results' in st.session_state and uploaded_file:
         """, unsafe_allow_html=True)
 
     # ── Recommendation
-    st.markdown(f'<div class="rec-bar">{info["recommendation"]}</div>', unsafe_allow_html=True)
+   
 
     # ── Download
     st.markdown('<br>', unsafe_allow_html=True)
